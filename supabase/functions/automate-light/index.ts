@@ -2,25 +2,12 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 serve(async (req: Request) => {
-  console.log("Edge function triggered");
-  
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
   }
   
   try {
     const payload = await req.json();
-    console.log("Received payload:", JSON.stringify(payload, null, 2));
-    
-    // if (payload.type === 'UPDATE' && payload.old_record) {
-    //   const oldValue = payload.old_record.is_enabled;
-    //   const newValue = payload.record.is_enabled;
-
-    //   if (oldValue === newValue) {
-    //     console.log("Skipping - no actual change detected");
-    //     return new Response("Skipped - no change", { status: 200 });
-    //   }
-    // }
     
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "https://iurighyzzgiezzxhiweb.supabase.co",
@@ -29,14 +16,12 @@ serve(async (req: Request) => {
 
     let device, value;
     if (payload.type === 'UPDATE') {
+      // if something went wrong, check this
       device = payload.record.device_name;
       value = payload.record.value;
     } else {
       ({ device, value } = payload);
     }
-
-    console.log("Device: ", device);
-    console.log("Value: ", value);
 
     if (!device) {
       return new Response(JSON.stringify({ error: "Missing device in payload" }), { 
@@ -49,7 +34,8 @@ serve(async (req: Request) => {
       .from("automations")
       .select("*")
       .eq("device", device)
-      .eq("is_enabled", true);
+      .eq("is_enabled", true)
+      .eq("trigger_type", "sensor");
 
     if (error) throw error;
 
@@ -67,22 +53,7 @@ serve(async (req: Request) => {
         if (value < 200) {
           matching.push(automation);
         } else {
-          matching.push({...automation, action: "off" });
-        }
-      }
-
-      if (automation.trigger_type === "time") {
-        const now = new Date();
-        const currentTime = now.getHours() * 60 + now.getMinutes();
-        
-        const [fromHour, fromMin = 0] = automation.condition.from.split(":").map(Number);
-        const [toHour, toMin = 0] = automation.condition.to.split(":").map(Number);
-        
-        const fromTime = fromHour * 60 + fromMin;
-        const toTime = toHour * 60 + toMin;
-
-        if (currentTime >= fromTime && currentTime < toTime) {
-          matching.push(automation);
+          matching.push({...automation, action: "OFF" });
         }
       }
     }
@@ -95,7 +66,8 @@ serve(async (req: Request) => {
     }
 
     const finalDecision = matching[0];
-    const newState = finalDecision.action === "on"; // on or off should be in capital case
+    const newState = finalDecision.action === "ON";
+    const is_running = !finalDecision.is_running;
 
     // Update the device state
     const { error: updateError } = await supabase
@@ -105,7 +77,12 @@ serve(async (req: Request) => {
 
     if (updateError) throw updateError;
 
-    console.log(`Updated ${device} to ${newState ? 'ON' : 'OFF'}`);
+    const { error: updateAutomateError } = await supabase
+      .from("automations")
+      .update({ is_running })
+      .eq("id", automations.id);
+
+    if (updateAutomateError) throw updateAutomateError;
     
     return new Response(JSON.stringify({ 
       message: "Automation executed",

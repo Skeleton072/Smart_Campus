@@ -2,8 +2,6 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 serve(async (req: Request) => {
-  console.log("Time-runner function is triggered.");
-
   try {
     const now = new Date();
 
@@ -29,24 +27,16 @@ serve(async (req: Request) => {
 
     if (error) throw error;
 
-    // console.log("Automations: ", automations[0]);
-
     for (const automation of automations ?? []) {
-      // const startTime = automation.condition?.from;
-      // const endTime = automation.condition?.to;
-
-      const startTime = "15:59";
-      const endTime = "16:00";
+      const startTime = automation.condition?.from;
+      const endTime = automation.condition?.to;
 
       if (currentTime == startTime) {
-        console.log(automation.action);
-        await updateTimeBasedAutomation(supabase, automation.action, automation.device);
-        console.log("Function starts now.");
+        await updateTimeBasedAutomation(supabase, automation.action, automation.device, automation.id, automation.is_running);
       }
 
       if (currentTime == endTime) {
-        await updateTimeBasedAutomation(supabase, automation.action == "on" ? "off" : "on", automation.device);
-        console.log("Function ends now.");
+        await updateTimeBasedAutomation(supabase, automation.action == "ON" ? "OFF" : "ON", automation.device, automation.id, automation.is_running);
       }
     }
 
@@ -63,14 +53,21 @@ serve(async (req: Request) => {
   }
 });
 
-async function updateTimeBasedAutomation(supabase: any, state: "on" | "off" ,device: string) {
+async function updateTimeBasedAutomation(supabase: any, state: "ON" | "OFF" ,device: string, id: string, previouslyRunning: boolean) {
   try {
-    const { data, error } = await supabase
+    const { error: updateDeviceError } = await supabase
       .from("classroom_devices")
-      .update({ is_enabled: state == "on" ? true : false })
+      .update({ is_enabled: state == "ON" ? true : false })
       .eq("device_name", device);
 
-    if (error) throw error;
+    if (updateDeviceError) throw updateDeviceError;
+
+    const { error: updateAutomateError } = await supabase
+      .from("automations")
+      .update({ is_running: !previouslyRunning })
+      .eq("id", id);
+
+    if (updateAutomateError) throw updateAutomateError;
 
     console.log("successfully updated the automation.");
   } catch (error: any) {

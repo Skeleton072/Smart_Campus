@@ -27,11 +27,11 @@ const months = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 ];
 
-// shows the student's yearly data when user presses onto it
+
 function countWeekdaysInMonth(year: number, month: number) {
   let totalWeekDays = 0;
   let currentDate = new Date(year, month, 1);
-  const lastDate = new Date().getDate();
+  const lastDate = new Date(year, month+1, 0).getDate();
   while (currentDate.getMonth() === month && currentDate.getDate() <= lastDate) {
     let dayOfWeek = currentDate.getDay();
     if (dayOfWeek !== 0 && dayOfWeek !== 6) {
@@ -56,6 +56,8 @@ export default function RollCallScreen() {
 
   const { data: dailyData, isLoading: isDailyLoading } = useDailyAttendance(date, isDaily);
   const { data: monthlyData, isLoading: isMonthlyLoading } = useMonthlyAttendance(selectedMonth, isMonthly);
+
+  const totalWeekDays = useMemo(() => countWeekdaysInMonth(new Date().getFullYear(), selectedMonth), [selectedMonth]);
 
   const renderDailyView = () => (
     <View style={styles.tableContainer}>
@@ -191,8 +193,6 @@ export default function RollCallScreen() {
   const memorizedDailyView = useMemo(() => renderDailyView(), [dailyData]);
   const memorizedMonthlyView = useMemo(() => renderMonthlyView(), [monthlyData]);
 
-  const totalWeekDays = useMemo(() => countWeekdaysInMonth(new Date().getFullYear(), selectedMonth), [selectedMonth]);
-
   const summary = useMemo(() => {
     if (!dailyData && !monthlyData) return { present: 0, total: 0 };
 
@@ -209,7 +209,7 @@ export default function RollCallScreen() {
     } else if (isMonthly && monthlyData) {
       const totalDays = countWeekdaysInMonth(new Date().getFullYear(), selectedMonth);
       const present = monthlyData.reduce((acc, student) => acc + student.daysPresent.length, 0);
-      return { present, total: totalDays * monthlyData.length };
+      return { present, total: totalDays - present };
     }
     return { present: 0, total: 0 };
   }, [dailyData, monthlyData, isDaily, isMonthly, selectedMonth]);

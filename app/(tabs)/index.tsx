@@ -1,7 +1,7 @@
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../utils/SupabaseClient";
 import { getDevicesData, updateDevicesData } from "../utils/services/indexService";
 
@@ -17,6 +17,13 @@ interface WeatherInfoProps {
   label: string,
   value: string
 }
+
+interface DeviceProps {
+  device_name: string,
+  is_enabled: boolean,
+}
+
+// need to do weather api or fetch data from ESP32 for the weather card
 
 const devices = [
   {
@@ -68,21 +75,21 @@ export default function HomeScreen() {
     }
   }, [deviceState]);
 
-  async function fetchFunction() {
-    const data = await getDevicesData();
-
-    if (data) {
-      const myobject: Record<string, boolean> = {};
-  
-      data.forEach((row) => {
-        myobject[row.device_name] = row.is_enabled;
-      });
-  
-      setDeviceState(myobject);
-    }
-  }
-
   useEffect(() => {
+    async function fetchFunction() {
+      const data = await getDevicesData();
+
+      if (data) {
+        const myobject: Record<string, boolean> = {};
+    
+        data.forEach((row: DeviceProps) => {
+          myobject[row.device_name] = row.is_enabled;
+        });
+    
+        setDeviceState(myobject);
+      }
+    }
+
     fetchFunction();
 
     const channel = supabase
@@ -175,7 +182,6 @@ export default function HomeScreen() {
   );
 }
 
-// Need to fetch data from ESP32 sensor
 function WeatherInfo({ icon, label, value }: WeatherInfoProps) {
   return (
     <View style={styles.weatherInfo}>
@@ -188,8 +194,7 @@ function WeatherInfo({ icon, label, value }: WeatherInfoProps) {
   );
 }
 
-function DeviceCard({ title, subtitle, icon, active }: DeviceCardProps) {
-
+const DeviceCard = React.memo(({ title, subtitle, icon, active }: DeviceCardProps) => {
   async function onPressFunction() {
     return await updateDevicesData(!active, title);
   }
@@ -220,7 +225,7 @@ function DeviceCard({ title, subtitle, icon, active }: DeviceCardProps) {
       {active && <View style={styles.activeIndicator} />}
     </TouchableOpacity>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

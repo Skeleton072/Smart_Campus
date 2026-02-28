@@ -1,59 +1,121 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Pressable } from "react-native";
 import { Ionicons, Feather, MaterialIcons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../utils/SupabaseClient";
-import NetInfo from "@react-native-community/netinfo";
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { router, useRouter } from "expo-router";
+import { automationToggle, deleteAutomation } from "../utils/services/automateService";
 
-interface automationListType {
-  
+type AutomationListType = {
+  id: string,
+  title: string,
+  device: string,
+  is_enabled: boolean,
+  trigger_type: "sensor" | "time",
+  condition: { from: string, to: string } | { details: string},
+  action: "ON" | "OFF",
+  is_running: boolean,
 }
 
-// after creating new automation, have to update UI
+type AutomationItemType = {
+  title: string,
+  condition: { from: string, to: string } | { details: string},
+  type: "sensor" | "time",
+  device: string,
+  enabled: boolean,
+  color: string,
+  id: string,
+  action: "ON" | "OFF",
+  setAutomationList: React.Dispatch<React.SetStateAction<AutomationListType[] | null>>,
+  is_running: boolean
+}
+
 
 export default function AutomateScreen() {
   const router = useRouter();
 
-  const [automationList, setAutomationList] = useState<null | any[]>();
+  const [automationList, setAutomationList] = useState<AutomationListType[] | null>(null);
   const [activeAutomations, setActiveAutomations] = useState(0);
 
-  function onCreateFunction(newAutomation: object) {
-    setAutomationList(prev => [...prev!, newAutomation])
-  }
+  // useEffect(() => {
+  //   const unsubscribe = NetInfo.addEventListener(state => {
+  //     if (state.isConnected) {
+  //       fetchAutomations();
+  //     }
+  //   });
 
-  async function fetchAutomations() {
-    const { data, error } = await supabase
-      .from("automations")
-      .select("*");
-
-    if (error) {
-      console.log("Error: ", error.message);
-    }
-
-    let res = 0;
-    data!.forEach(row => {
-      if (row.is_enabled) {
-        res++;
-      }
-    });
-
-    setActiveAutomations(res);
-    setAutomationList(data);
-  }
-
+  //   return () => unsubscribe();
+  // }, []);
 
   useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener(state => {
-      // console.log(state.isConnected);
-      if (state.isConnected) {
-        fetchAutomations();
-      }
-    });
+    async function fetchAutomations() {
+      const { data, error } = await supabase
+        .from("automations")
+        .select("*");
 
-    return () => unsubscribe();
+      if (error) {
+        console.log("Error: ", error.message);
+      }
+
+      let res = 0;
+      data!.forEach(row => {
+        if (row.is_enabled) {
+          res++;
+        }
+      });
+
+      setActiveAutomations(res);
+      setAutomationList(data);
+    }
+
+    fetchAutomations();
+
+    const channel = supabase
+      .channel("automations")
+      .on(
+        "postgres_changes",
+        {
+          event: "*", // INSERT | UPDATE | DELETE
+          schema: "public",
+          table: "automations",
+        },
+        (payload) => {
+          switch (payload.eventType) {
+            case "INSERT":
+              setAutomationList((prev: any) =>
+                prev ? [payload.new, ...prev] : [payload.new]
+              );
+              break;
+
+            case "UPDATE":
+              setAutomationList((prev: any) =>
+                prev?.map((automation: AutomationListType) =>
+                  automation.id === payload.new.id
+                    ? payload.new
+                    : automation
+                )
+              );
+              break;
+
+            case "DELETE":
+              setAutomationList((prev: any) =>
+                prev?.filter(
+                  (automation: AutomationListType) => automation.id !== payload.old.id
+                )
+              );
+              break;
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
+
+  
 
 
   return (
@@ -98,11 +160,15 @@ export default function AutomateScreen() {
                 key={index}
                 title={automation.title}
                 id={automation.id}
-                // subtitle={automation.device}
-                subtitle={automation.type == "time" ? `From ${automation.condition.from} to ${automation.condition.to}` : automation.condition.details}
-                icon={automation.device == "Light" ? "lightbulb-on-10" : "fan"}
-                color={automation.type == "time" ? "#6200ea" : "#6200ea"}
+                device={automation.device}
+                condition={automation.condition}
+                type={automation.trigger_type}
+                action={automation.action}
+                // subtitle={automation.type == "time" ? `From ${automation.condition.from} to ${automation.condition.to}` : automation.condition.details}
+                // icon={automation.device == "Light" ? "lightbulb-on-10" : "fan"}
+                color={automation.trigger_type == "time" ? "#6200ea" : "#6200ea"}
                 enabled={automation.is_enabled}
+                is_running={automation.is_running}
                 setAutomationList={setAutomationList}
               />
             ))
@@ -111,7 +177,12 @@ export default function AutomateScreen() {
 
         {/* Add New Button */}
         <TouchableOpacity style={styles.addButton} onPress={() => {
-          router.push("/screens/addAutomation");
+          router.push({
+            pathname: "/screens/addAutomation",
+            params: {
+              update: "false"
+            }
+          });
         }}>
           <View style={styles.addButtonInner}>
             <View style={styles.addIcon}>
@@ -131,7 +202,7 @@ export default function AutomateScreen() {
   );
 }
 
-function AutomationItem({ title, subtitle, icon, enabled, color, id, onDelete, setAutomationList }: any) {
+const AutomationItem = React.memo(({ title, condition, type, device, enabled, color, id, action, setAutomationList, is_running }: AutomationItemType) => {
   const [isEnabled, setIsEnabled] = useState<boolean>();
   const swipeRef = useRef<Swipeable>(null);
 
@@ -140,34 +211,36 @@ function AutomationItem({ title, subtitle, icon, enabled, color, id, onDelete, s
   }, [enabled]);
 
   async function switchFunction() {
-    const { data, error } = await supabase
-      .from("automations")
-      .update({ is_enabled: !isEnabled })
-      .eq("id", id);
+    // const { error } = await supabase
+    //   .from("automations")
+    //   .update({ is_enabled: !isEnabled })
+    //   .eq("id", id);
 
-    if (error) {
-      console.log("Error: ", error.message);
-      return;
-    }
+    await automationToggle(isEnabled!, id);
     
     setIsEnabled(!isEnabled);
     return;
   }
 
   async function deleteFunction() {
-    const { data, error } = await supabase
-      .from("automations")
-      .delete()
-      .match({ id: id });
+    // const { error } = await supabase
+    //   .from("automations")
+    //   .delete()
+    //   .match({ id: id });
 
-    if (error) {
-      console.log("Error: ", error.message);
-      return;
-    }
+    // if (error) {
+    //   console.log("Error: ", error.message);
+    //   return;
+    // }
+
+    await deleteAutomation(id);
 
     swipeRef.current?.close();
     // need to add types
-    setAutomationList((prev: []) => prev.filter((row: { id: number }) => row.id != id));
+    setAutomationList((prev) => {
+      if (!prev) return prev;
+      return prev.filter((row) => row.id !== id);
+    });
   }
 
   function renderRightAction() {
@@ -188,8 +261,17 @@ function AutomationItem({ title, subtitle, icon, enabled, color, id, onDelete, s
         onPress={() => {
           router.push({
             pathname: "/screens/addAutomation",
-            params: {}
-          })
+            params: {
+              id,
+              title,
+              device,
+              condition: JSON.stringify(condition),
+              type,
+              action,
+              update: "true",
+            }
+          });
+          swipeRef.current?.close();
         }}
         style={[styles.hint, styles.editHint]}
       >
@@ -215,12 +297,16 @@ function AutomationItem({ title, subtitle, icon, enabled, color, id, onDelete, s
       >
         <View style={styles.automationLeft}>
           <View style={[styles.automationIcon, { backgroundColor: `${color}15` }]}>
-            <MaterialCommunityIcons name={icon} size={24} color={color} />
+            <MaterialCommunityIcons name={device == "Light" ? "lightbulb-on-10" : "fan"} size={24} color={color} />
           </View>
 
           <View style={styles.automationContent}>
             <Text style={styles.automationTitle}>{title}</Text>
-            <Text style={styles.automationSubtitle}>{subtitle}</Text>
+            <Text style={styles.automationSubtitle}>{
+              type === "time"
+                ? `From ${(condition as { from: string }).from} to ${(condition as { to: string }).to}`
+                : (condition as { details: string }).details
+            }</Text>
           </View>
         </View>
 
@@ -231,15 +317,12 @@ function AutomationItem({ title, subtitle, icon, enabled, color, id, onDelete, s
             trackColor={{ false: '#E2E8F0', true: color }}
             thumbColor={isEnabled ? 'white' : '#f4f3f4'}
           />
-          {isEnabled && <View style={[styles.activeDot, { backgroundColor: color }]} />}
+          {is_running && <View style={[styles.activeDot, { backgroundColor: color }]} />}
         </View>
       </TouchableOpacity>
     </Swipeable>
   )
-}
-
-
-/* ---------- Styles ---------- */
+})
 
 const styles = StyleSheet.create({
   container: {
@@ -482,7 +565,7 @@ const styles = StyleSheet.create({
   },
   hint: {
     width: 80,
-    height: 95,
+    height: 85,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 16,

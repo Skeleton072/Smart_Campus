@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useReducer, useState } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, TextInput, ScrollView, Platform, Pressable } from 'react-native';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -6,97 +6,185 @@ import { supabase } from '../utils/SupabaseClient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
-interface AutomationModalProps {
-  modalVisible: boolean;
-  onCreateFunction: (newData: any) => void;
-  setModalVisible: (visible: boolean) => void;
+type State = {
+  automationTitle: string;
+  selectedDevice: string;
+  startTime: Date,
+  endTime: Date,
+  automationType: "time" | "sensor",
+  action: boolean,
+  selectedCondition: string | null,
+};
+
+type DeviceCondition = {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
 }
+
+type ParamsType = {
+  id?: string,
+  title?: string;
+  device?: string;
+  type?: "time" | "sensor";
+  action?: string;
+  condition?: string;
+  update: string
+};
+
+type Action =
+  | { type: "SET_TITLE"; payload: string }
+  | { type: "SET_DEVICE"; payload: string }
+  | { type: "SET_START_TIME"; payload: Date }
+  | { type: "SET_END_TIME"; payload: Date }
+  | { type: "AUTOMATION_TYPE"; payload: "time" | "sensor" }
+  | { type: "ACTION"; payload: boolean }
+  | { type: "SELECTED_CONDITION"; payload: string }
+  | { type: "RESET" };
+
+function reducer(state: State, action: Action): State {
+  switch (action.type) {
+    case "RESET":
+      return { 
+        automationTitle: "",
+        selectedDevice: "",
+        startTime: new Date(),
+        endTime: new Date(Date.now() + 3600000),
+        automationType: 'sensor',
+        action: true,
+        selectedCondition: null,
+      }
+    case "SET_TITLE":
+      return {...state, automationTitle: action.payload };
+    case "SET_DEVICE":
+      return {...state, selectedDevice: action.payload };
+    case "SET_START_TIME":
+      return {...state, startTime: action.payload };
+    case "SET_END_TIME":
+      return {...state, endTime: action.payload };
+    case "AUTOMATION_TYPE":
+      return {...state, automationType: action.payload };
+    case "ACTION":
+      return {...state, action: action.payload }
+    case "SELECTED_CONDITION":
+      return {...state, selectedCondition: action.payload};
+    default:
+      return state;
+  }
+}
+
+const devices = [
+  { id: '1', name: 'Light', icon: 'lightbulb-on-10' },
+  { id: '2', name: 'Fan', icon: 'fan' }
+];
+
+const lightConditions = [
+  { id: 'light-1', title: 'When it gets dark', description: 'Based on sunset time', icon: 'moon-outline' },
+];
+
+const fanConditions = [
+  { id: 'fan-1', title: 'When temperature rises', description: 'Above 25°C', icon: 'thermometer-outline' },
+];
 
 export default function AddAutomationScreen() {
   const router = useRouter();
-  const { title, device, type, action } = useLocalSearchParams();
+  const { id, title, device, condition, type, action, update } = useLocalSearchParams<ParamsType>();
 
-  const [automationTitle, setAutomationTitle] = useState('');
-  const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
-  const [startTime, setStartTime] = useState(new Date());
-  const [endTime, setEndTime] = useState(new Date(Date.now() + 3600000)); // +1 hour
+  const parsedCondition =
+    type == "time" && condition && typeof condition === "string"
+      ? JSON.parse(condition)
+      : null;
+
+  let from = new Date();
+  let to = new Date(Date.now() + 3600000);
+
+  if (parsedCondition) {
+    const [startHour, startMinute] = parsedCondition.from.split(":");
+    from = new Date();
+    from.setHours(Number(startHour));
+    from.setMinutes(Number(startMinute));
+  
+    const [endHour, endMinute] = parsedCondition.to.split(":");
+    to = new Date();
+    to.setHours(Number(endHour));
+    to.setMinutes(Number(endMinute));
+  }
+
+
+  const [state, dispatch] = useReducer(reducer, {
+    automationTitle: title ? String(title) : "",
+    selectedDevice: device ? String(device) : "",
+    startTime: from,
+    endTime: to,
+    automationType: type ? type : "sensor",
+    action: action == "ON" ? true : false,
+    selectedCondition: type === "sensor" ? device === "Fan" ? fanConditions[0].id : lightConditions[0].id : null,
+  });
+
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
-  const [automationType, setAutomationType] = useState<'time' | 'sensor'>('sensor'); // Changed to explicit type
-  const [shouldTurnOn, setShouldTurnOn] = useState(true);
-  const [selectedCondition, setSelectedCondition] = useState<string | null>(null); // New state for conditions
-
-  const devices = [
-    { id: '1', name: 'Light', icon: 'lightbulb-on-10' },
-    { id: '2', name: 'Fan', icon: 'fan' }
-  ];
-
-  const lightConditions = [
-    { id: 'light-1', title: 'When it gets dark', description: 'Based on sunset time', icon: 'moon-outline' },
-  ];
-
-  const fanConditions = [
-    { id: 'fan-1', title: 'When temperature rises', description: 'Above 25°C', icon: 'thermometer-outline' },
-  ];
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
   const resetForm = () => {
-    setAutomationTitle('');
-    setSelectedDevice(null);
-    setSelectedCondition(null);
-    setShouldTurnOn(true);
-    setAutomationType('time');
-    setStartTime(new Date());
-    setEndTime(new Date(Date.now() + 3600000));
+    dispatch({ type: "RESET" });
   };
 
   const handleCreate = async () => {
-    if (!automationTitle || !selectedDevice) {
+    if (!state.automationTitle || !state.selectedDevice) {
       return false;
     }
 
-    // Validate based on automation type
-    if (automationType === 'sensor' && !selectedCondition) {
+    if (state.automationType === 'sensor' && !state.selectedCondition) {
       return false;
     }
-
-    // setModalVisible(false);
 
     const newData = {
-      title: automationTitle,
-      device: selectedDevice === "1" ? "Light" : "Fan",
+      title: state.automationTitle,
+      device: state.selectedDevice,
       is_enabled: true,
-      trigger_type: automationType,
-      condition: automationType === 'time' 
+      trigger_type: state.automationType,
+      condition: state.automationType === 'time' 
         ? { 
             trigger_type: 'time',
-            from: `${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')}`, 
-            to: `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}` 
+            from: `${state.startTime.getHours().toString().padStart(2, '0')}:${state.startTime.getMinutes().toString().padStart(2, '0')}`, 
+            to: `${state.endTime.getHours().toString().padStart(2, '0')}:${state.endTime.getMinutes().toString().padStart(2, '0')}` 
           } 
         : { 
             trigger_type: 'sensor',
-            details: selectedDevice === "1" 
-              ? lightConditions.find(c => c.id == selectedCondition)!.title
-              : fanConditions.find(c => c.id == selectedCondition)!.title
+            details: state.selectedDevice === "Light" 
+              ? lightConditions.find(c => c.id == state.selectedCondition)!.title
+              : fanConditions.find(c => c.id == state.selectedCondition)!.title
           },
-      action: shouldTurnOn ? "ON" : "OFF"
+      action: state.action ? "ON" : "OFF"
     };
 
-    const { error } = await supabase
-      .from("automations")
-      .insert(newData)
-      .select()
-      .single();
+    let error;
+
+    if (update === "false") {
+      const { error: insertError } = await supabase
+        .from("automations")
+        .insert(newData);
+
+      error = insertError;
+    } else {
+      const { error: updateError } = await supabase
+        .from("automations")
+        .update(newData)
+        .eq("id", id);
+
+      error = updateError;
+    }
 
     if (error) {
-      console.log("Error: ", error.message);
+      console.log("Error:", error);
       return;
     }
+
     router.back();
-    // onCreateFunction(newData);
     resetForm();
   };
 
@@ -109,21 +197,23 @@ export default function AddAutomationScreen() {
   const onStartTimeChange = (event: any, selectedDate?: Date) => {
     setShowStartTimePicker(Platform.OS === 'ios');
     if (selectedDate) {
-      setStartTime(selectedDate);
+      // setStartTime(selectedDate);
+      dispatch({ type: "SET_START_TIME", payload: selectedDate });
     }
   };
 
   const onEndTimeChange = (event: any, selectedDate?: Date) => {
     setShowEndTimePicker(Platform.OS === 'ios');
     if (selectedDate) {
-      setEndTime(selectedDate);
+      // setEndTime(selectedDate);
+      dispatch({ type: "SET_END_TIME", payload: selectedDate });
     }
   };
 
   // Get conditions based on selected device
   const getConditionsForDevice = () => {
-    if (!selectedDevice) return [];
-    return selectedDevice === "1" ? lightConditions : fanConditions;
+    if (!state.selectedDevice) return [];
+    return state.selectedDevice === "Light" ? lightConditions : fanConditions;
   };
 
   return (
@@ -159,8 +249,9 @@ export default function AddAutomationScreen() {
                 style={styles.input}
                 placeholder="Morning Routine"
                 placeholderTextColor="#A0AEC0"
-                value={automationTitle}
-                onChangeText={setAutomationTitle}
+                value={state.automationTitle}
+                // onChangeText={setAutomationTitle}
+                onChangeText={(e) => dispatch({ type: "SET_TITLE", payload: e })}
               />
             </View>
             {/* Select Device */}
@@ -178,28 +269,28 @@ export default function AddAutomationScreen() {
                     activeOpacity={0.3}
                     style={[
                       styles.deviceCard,
-                      selectedDevice === device.id && styles.deviceCardSelected,
+                      state.selectedDevice === device.name && styles.deviceCardSelected,
                     ]}
                     onPress={() => {
-                      setSelectedDevice(device.id);
+                      dispatch({ type: "SET_DEVICE", payload: device.name });
                     }}>
                     <View style={[
                       styles.deviceIcon,
-                      selectedDevice === device.id && styles.deviceIconSelected,
+                      state.selectedDevice === device.name && styles.deviceIconSelected,
                     ]}>
                       <MaterialCommunityIcons
                         name={device.icon as any}
                         size={24}
-                        color={selectedDevice === device.id ? '#667EEA' : '#4A5568'}
+                        color={state.selectedDevice === device.name ? '#667EEA' : '#4A5568'}
                       />
                     </View>
                     <Text style={[
                       styles.deviceName,
-                      selectedDevice === device.id && styles.deviceNameSelected,
+                      state.selectedDevice === device.name && styles.deviceNameSelected,
                     ]}>
                       {device.name}
                     </Text>
-                    {selectedDevice === device.id && (
+                    {state.selectedDevice === device.name && (
                       <View style={styles.checkmark}>
                         <Ionicons name="checkmark-circle" size={20} color="#667EEA" />
                       </View>
@@ -209,7 +300,7 @@ export default function AddAutomationScreen() {
               </View>
             </View>
             {/* Device Action (Switch On/Off) */}
-            {selectedDevice && (
+            {state.selectedDevice && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <Text style={styles.sectionTitle}>Device Action</Text>
@@ -224,19 +315,18 @@ export default function AddAutomationScreen() {
                       style={[
                         styles.actionButton,
                         styles.actionButtonLeft,
-                        // shouldTurnOn && styles.conditionButtonActive,
-                        shouldTurnOn && styles.actionButtonOnActive,
+                        state.action && styles.actionButtonOnActive,
                       ]}
-                      onPress={() => setShouldTurnOn(true)}
+                      onPress={() => dispatch({ type: "ACTION", payload: true })}
                     >
                       <Ionicons 
                         name="power" 
                         size={20} 
-                        color={shouldTurnOn ? "#ffffff" : "#48BB78"} 
+                        color={state.action ? "#ffffff" : "#48BB78"} 
                       />
                       <Text style={[
                         styles.actionButtonText,
-                        shouldTurnOn && styles.actionButtonTextActive,
+                        state.action && styles.actionButtonTextActive,
                       ]}>TURN ON</Text>
                     </Pressable>
                     
@@ -245,19 +335,18 @@ export default function AddAutomationScreen() {
                       style={[
                         styles.actionButton,
                         styles.actionButtonRight,
-                        // !shouldTurnOn && styles.conditionButtonActive,
-                        !shouldTurnOn && styles.actionButtonOffActive,
+                        !state.action && styles.actionButtonOffActive,
                       ]}
-                      onPress={() => setShouldTurnOn(false)}
+                      onPress={() => dispatch({ type: "ACTION", payload: false })}
                     >
                       <Ionicons 
                         name="power" 
                         size={20} 
-                        color={!shouldTurnOn ? "#ffffff" : "#F56565"} 
+                        color={!state.action ? "#ffffff" : "#F56565"} 
                       />
                       <Text style={[
                         styles.actionButtonText,
-                        !shouldTurnOn && styles.actionButtonTextActive,
+                        !state.action && styles.actionButtonTextActive,
                       ]}>TURN OFF</Text>
                     </Pressable>
                   </View>
@@ -266,16 +355,16 @@ export default function AddAutomationScreen() {
                   <View style={styles.actionIndicator}>
                     <View style={[
                       styles.indicatorIcon,
-                      shouldTurnOn ? styles.indicatorOn : styles.indicatorOff,
+                      state.action ? styles.indicatorOn : styles.indicatorOff,
                     ]}>
                       <Ionicons 
-                        name={shouldTurnOn ? "sunny" : "moon"} 
+                        name={state.action ? "sunny" : "moon"} 
                         size={16} 
                         color="white" 
                       />
                     </View>
                     <Text style={styles.actionIndicatorText}>
-                      {shouldTurnOn ? 'Device will turn ON' : 'Device will turn OFF'}
+                      {state.action ? 'Device will turn ON' : 'Device will turn OFF'}
                     </Text>
                   </View>
                 </View>
@@ -294,20 +383,18 @@ export default function AddAutomationScreen() {
                   style={[
                     styles.actionButton,
                     styles.actionButtonLeft,
-                    // automationType === 'condition' && styles.conditionButtonActive,
-                    automationType === 'time' && styles.conditionButtonOnActive,
+                    state.automationType === 'time' && styles.conditionButtonOnActive,
                   ]}
-                  onPress={() => setAutomationType('time')}
+                  onPress={() => dispatch({ type: "AUTOMATION_TYPE", payload: 'time' })}
                 >
                   <Ionicons 
                     name="time-outline" 
                     size={20}
-                    color={automationType === 'time' ? "#ffffff" : "#667EEA"} 
+                    color={state.automationType === 'time' ? "#ffffff" : "#667EEA"} 
                   />
                   <Text style={[
                     styles.actionButtonText,
-                    // automationType === 'condition' && styles.actionButtonTextOnActive,
-                    automationType === 'time' && styles.actionButtonTextActive,
+                    state.automationType === 'time' && styles.actionButtonTextActive,
                   ]}>Time Based</Text>
                 </Pressable>
                 
@@ -316,26 +403,24 @@ export default function AddAutomationScreen() {
                   style={[
                     styles.actionButton,
                     styles.actionButtonRight,
-                    // automationType === 'time' && styles.conditionButtonActive,
-                    automationType === 'sensor' && styles.conditionButtonOnActive,
+                    state.automationType === 'sensor' && styles.conditionButtonOnActive,
                   ]}
-                  onPress={() => setAutomationType('sensor')}
+                  onPress={() => dispatch({ type: "AUTOMATION_TYPE", payload: 'sensor' })}
                 >
                   <Ionicons 
                     name="contrast-outline" 
                     size={20}
-                    color={automationType === 'sensor' ? "#ffffff" : "#667EEA"} 
+                    color={state.automationType === 'sensor' ? "#ffffff" : "#667EEA"} 
                   />
                   <Text style={[
                     styles.actionButtonText,
-                    // automationType === 'time' && styles.actionButtonTextOnActive,
-                    automationType === 'sensor' && styles.actionButtonTextActive,
+                    state.automationType === 'sensor' && styles.actionButtonTextActive,
                   ]}>Condition Based</Text>
                 </Pressable>
               </View>
             </View>
             {/* Condition Based UI */}
-            {selectedDevice && automationType === 'sensor' && (
+            {state.selectedDevice && state.automationType === 'sensor' && (
               <View style={styles.section}>
                 {/* <View style={styles.sectionHeader}>
                   <Text style={styles.sectionTitle}>Select Condition</Text>
@@ -343,25 +428,25 @@ export default function AddAutomationScreen() {
                 </View> */}
                 
                 <View style={styles.conditionsList}>
-                  {getConditionsForDevice().map((condition: any) => (
+                  {getConditionsForDevice().map((condition: DeviceCondition) => (
                     <TouchableOpacity
                       key={condition.id}
                       activeOpacity={0.3}
                       style={[
                         styles.conditionCard,
-                        selectedCondition === condition.id && styles.conditionCardSelected,
+                        state.selectedCondition === condition.id && styles.conditionCardSelected,
                       ]}
-                      onPress={() => setSelectedCondition(condition.id)}
+                      onPress={() => dispatch({ type: "SELECTED_CONDITION", payload: condition.id })}
                     >
                       <View style={styles.conditionLeft}>
                         <View style={[
                           styles.conditionIcon,
-                          selectedCondition === condition.id && styles.conditionIconSelected,
+                          state.selectedCondition === condition.id && styles.conditionIconSelected,
                         ]}>
                           <Ionicons
                             name={condition.icon as any}
                             size={20}
-                            color={selectedCondition === condition.id ? '#667EEA' : '#4A5568'}
+                            color={state.selectedCondition === condition.id ? '#667EEA' : '#4A5568'}
                           />
                         </View>
                         <View style={styles.conditionContent}>
@@ -371,9 +456,9 @@ export default function AddAutomationScreen() {
                       </View>
                       <View style={[
                         styles.conditionCheckbox,
-                        selectedCondition === condition.id && styles.conditionCheckboxSelected,
+                        state.selectedCondition === condition.id && styles.conditionCheckboxSelected,
                       ]}>
-                        {selectedCondition === condition.id && (
+                        {state.selectedCondition === condition.id && (
                           <Ionicons name="checkmark" size={16} color="white" />
                         )}
                       </View>
@@ -383,7 +468,7 @@ export default function AddAutomationScreen() {
               </View>
             )}
             {/* Time Based UI */}
-            {selectedDevice && automationType === 'time' && (
+            {state.selectedDevice && state.automationType === 'time' && (
               <View style={styles.section}>
                 <View style={styles.timeContainer}>
                   {/* Start Time */}
@@ -396,7 +481,7 @@ export default function AddAutomationScreen() {
                       <Text style={styles.timeCardTitle}>Start Time</Text>
                     </View>
                     <View style={styles.timeSelector}>
-                      <Text style={styles.timeText}>{formatTime(startTime)}</Text>
+                      <Text style={styles.timeText}>{formatTime(state.startTime)}</Text>
                       <Ionicons name="time-outline" size={20} color="#718096" />
                     </View>
                   </TouchableOpacity>
@@ -413,14 +498,14 @@ export default function AddAutomationScreen() {
                       <Text style={styles.timeCardTitle}>End Time</Text>
                     </View>
                     <View style={styles.timeSelector}>
-                      <Text style={styles.timeText}>{formatTime(endTime)}</Text>
+                      <Text style={styles.timeText}>{formatTime(state.endTime)}</Text>
                       <Ionicons name="time-outline" size={20} color="#718096" />
                     </View>
                   </TouchableOpacity>
                 </View>
                 {showStartTimePicker && (
                   <DateTimePicker
-                    value={startTime}
+                    value={state.startTime}
                     mode="time"
                     is24Hour={false}
                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
@@ -429,7 +514,7 @@ export default function AddAutomationScreen() {
                 )}
                 {showEndTimePicker && (
                   <DateTimePicker
-                    value={endTime}
+                    value={state.endTime}
                     mode="time"
                     is24Hour={false}
                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
@@ -449,14 +534,14 @@ export default function AddAutomationScreen() {
               <TouchableOpacity
                 style={[
                   styles.createButton,
-                  (!automationTitle || !selectedDevice || 
-                    (automationType === 'sensor' && !selectedCondition)) && 
+                  (!state.automationTitle || !state.selectedDevice || 
+                    (state.automationType === 'sensor' && !state.selectedCondition)) && 
                     styles.createButtonDisabled,
                 ]}
                 onPress={handleCreate}
-                disabled={!automationTitle || !selectedDevice || 
-                  (automationType === 'sensor' && !selectedCondition)}>
-                <Text style={styles.createButtonText}>Create Automation</Text>
+                disabled={!state.automationTitle || !state.selectedDevice || 
+                  (state.automationType === 'sensor' && !state.selectedCondition)}>
+                <Text style={styles.createButtonText}>{update == "true" ? "Update" : "Create"} Automation</Text>
                 <Ionicons name="add-circle-outline" size={20} color="white" />
               </TouchableOpacity>
             </View>
