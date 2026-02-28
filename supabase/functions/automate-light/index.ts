@@ -1,32 +1,127 @@
-// Follow this setup guide to integrate the Deno language server with your editor:
-// https://deno.land/manual/getting_started/setup_your_environment
-// This enables autocomplete, go to definition, etc.
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// Setup type definitions for built-in Supabase Runtime APIs
-import "@supabase/functions-js/edge-runtime.d.ts"
-
-console.log("Hello from Functions!")
-
-Deno.serve(async (req) => {
-  const { name } = await req.json()
-  const data = {
-    message: `Hello ${name}!`,
+serve(async (req: Request) => {
+  console.log("Edge function triggered");
+  
+  if (req.method !== "POST") {
+    return new Response("Method not allowed", { status: 405 });
   }
+  
+  try {
+    const payload = await req.json();
+    console.log("Received payload:", JSON.stringify(payload, null, 2));
+    
+    // if (payload.type === 'UPDATE' && payload.old_record) {
+    //   const oldValue = payload.old_record.is_enabled;
+    //   const newValue = payload.record.is_enabled;
 
-  return new Response(
-    JSON.stringify(data),
-    { headers: { "Content-Type": "application/json" } },
-  )
-})
+    //   if (oldValue === newValue) {
+    //     console.log("Skipping - no actual change detected");
+    //     return new Response("Skipped - no change", { status: 200 });
+    //   }
+    // }
+    
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "https://iurighyzzgiezzxhiweb.supabase.co",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1cmlnaHl6emdpZXp6eGhpd2ViIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODY1NzAyNSwiZXhwIjoyMDg0MjMzMDI1fQ.hxRjlqc-vX9b3ZP_ojaoxDT9C8BdDHqtO6gH7rInOEI"
+    );
 
-/* To invoke locally:
+    let device, value;
+    if (payload.type === 'UPDATE') {
+      device = payload.record.device_name;
+      value = payload.record.value;
+    } else {
+      ({ device, value } = payload);
+    }
 
-  1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
-  2. Make an HTTP request:
+    console.log("Device: ", device);
+    console.log("Value: ", value);
 
-  curl -i --location --request POST 'http://127.0.0.1:54321/functions/v1/automate-light' \
-    --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0' \
-    --header 'Content-Type: application/json' \
-    --data '{"name":"Functions"}'
+    if (!device) {
+      return new Response(JSON.stringify({ error: "Missing device in payload" }), { 
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
 
-*/
+    const { data: automations, error } = await supabase
+      .from("automations")
+      .select("*")
+      .eq("device", device)
+      .eq("is_enabled", true);
+
+    if (error) throw error;
+
+    if (!automations || automations.length === 0) {
+      return new Response("No automations found", { 
+        status: 200,
+        headers: { "Content-Type": "text/plain" }
+      });
+    }
+
+    const matching: any[] = [];
+
+    for (const automation of automations) {
+      if (automation.trigger_type === "sensor") {
+        if (value < 200) {
+          matching.push(automation);
+        } else {
+          matching.push({...automation, action: "off" });
+        }
+      }
+
+      if (automation.trigger_type === "time") {
+        const now = new Date();
+        const currentTime = now.getHours() * 60 + now.getMinutes();
+        
+        const [fromHour, fromMin = 0] = automation.condition.from.split(":").map(Number);
+        const [toHour, toMin = 0] = automation.condition.to.split(":").map(Number);
+        
+        const fromTime = fromHour * 60 + fromMin;
+        const toTime = toHour * 60 + toMin;
+
+        if (currentTime >= fromTime && currentTime < toTime) {
+          matching.push(automation);
+        }
+      }
+    }
+
+    if (matching.length === 0) {
+      return new Response("No matching automations", { 
+        status: 200,
+        headers: { "Content-Type": "text/plain" }
+      });
+    }
+
+    const finalDecision = matching[0];
+    const newState = finalDecision.action === "on"; // on or off should be in capital case
+
+    // Update the device state
+    const { error: updateError } = await supabase
+      .from("classroom_devices")
+      .update({ is_enabled: newState })
+      .eq("device_name", device);
+
+    if (updateError) throw updateError;
+
+    console.log(`Updated ${device} to ${newState ? 'ON' : 'OFF'}`);
+    
+    return new Response(JSON.stringify({ 
+      message: "Automation executed",
+      device,
+      newState 
+    }), { 
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+    
+  } catch (err: any) {
+    console.error("Error:", err.message);
+    
+    return new Response(JSON.stringify({ error: err.message }), { 
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+});

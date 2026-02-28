@@ -67,6 +67,7 @@ export default function AutomationModal({ modalVisible, onCreateFunction, setMod
       type: automationType,
       condition: automationType === 'time' 
         ? { 
+            trigger_type: 'time',
             from: `${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')}`, 
             to: `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}` 
           } 
@@ -75,9 +76,10 @@ export default function AutomationModal({ modalVisible, onCreateFunction, setMod
             // details: selectedDevice === "1" 
             //   ? lightConditions.find(c => c.id === selectedCondition)
             //   : fanConditions.find(c => c.id === selectedCondition)
+            trigger_type: 'sensor',
             details: selectedDevice === "1" 
-              ? lightConditions.find(c => c.id === selectedCondition).description
-              : fanConditions.find(c => c.id === selectedCondition).description
+              ? lightConditions.find(c => c.id === selectedCondition).title
+              : fanConditions.find(c => c.id === selectedCondition).title
           },
       action: shouldTurnOn ? "on" : "off"
     };

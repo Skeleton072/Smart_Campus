@@ -1,70 +1,89 @@
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../utils/SupabaseClient";
+import { getDevicesData, updateDevicesData } from "../utils/services/indexService";
 
-interface rowType {
-  object: { device_name: string, is_enabled: boolean }
+interface DeviceCardProps {
+  title: string,
+  subtitle: string,
+  icon: any,
+  active: boolean
 }
 
-export default function HomeScreen() {
-  const devices = [
-    {
-      title: "Light",
-      subtitle: "Light Opened",
-      table: "classroom_settings",
-      icon: "lightbulb-on-10",
-      col: "light_enabled",
-      row: "light"
-    },
-    {
-      title: "Fan",
-      subtitle: "Fan Opened",
-      table: "fan_table", // we don't have these tables yet
-      icon: "fan",
-      col: "is_enabled",
-      row: "fan"
-    },
-    {
-      title: "Gate",
-      subtitle: "Gate Opened",
-      table: "gate_table", // we don't have these tables yet
-      icon: "boom-gate",
-      col: "is_enabled",
-      row: "gate"
-    },
-    {
-      title: "Alarm",
-      subtitle: "Alarm Opened",
-      table: "intrusion_state",
-      icon: "alarm-light-outline",
-      col: "is_enabled",
-      row: "alarm"
-    }
-  ];
+interface WeatherInfoProps {
+  icon: any,
+  label: string,
+  value: string
+}
 
-  const [deviceState, setDeviceState] = useState<Record<string, boolean>>({});
+const devices = [
+  {
+    title: "Light",
+    subtitle: "Light Opened",
+    table: "classroom_settings",
+    icon: "lightbulb-on-10",
+    col: "light_enabled",
+  },
+  {
+    title: "Fan",
+    subtitle: "Fan Opened",
+    table: "fan_table",
+    icon: "fan",
+    col: "is_enabled",
+  },
+  {
+    title: "Gate",
+    subtitle: "Gate Opened",
+    table: "gate_table",
+    icon: "boom-gate",
+    col: "is_enabled",
+  },
+  {
+    title: "Alarm",
+    subtitle: "Alarm Opened",
+    table: "intrusion_state",
+    icon: "alarm-light-outline",
+    col: "is_enabled",
+  }
+];
+
+export default function HomeScreen() {
+  const [deviceState, setDeviceState] = useState<Record<string, boolean> | null>({});
+
+  const deviceCards = useMemo(() => {
+    if (deviceState) {
+      return devices.map((device) => {
+        return (
+          <DeviceCard
+            key={device.title}
+            title={device.title} 
+            subtitle={deviceState[device.title] ? `${device.title} Opened` : `${device.title} Closed`}
+            icon={device.icon}
+            active={deviceState[device.title] ?? false}
+          />
+        )
+      })
+    }
+  }, [deviceState]);
 
   async function fetchFunction() {
-    const { data, error } = await supabase
-      .from("classroom_devices")
-      .select("device_name, is_enabled")
-    
-    if (error) {
-      console.log("Error: ", error.message);
-      setDeviceState({});
+    const data = await getDevicesData();
+
+    if (data) {
+      const myobject: Record<string, boolean> = {};
+  
+      data.forEach((row) => {
+        myobject[row.device_name] = row.is_enabled;
+      });
+  
+      setDeviceState(myobject);
     }
-    const myobject: Record<string, boolean> = {};
-    data?.forEach((row) => {
-      myobject[row.device_name] = row.is_enabled;
-    });
-    setDeviceState(myobject);
   }
 
   useEffect(() => {
     fetchFunction();
-    console.log("It's received.");
 
     const channel = supabase
       .channel("classroom-devices")
@@ -94,7 +113,7 @@ export default function HomeScreen() {
   }, []);
 
 
-  if (!deviceState) {
+  if (deviceState == null) {
     return(
       <View>
         <Text>fetching data</Text>
@@ -143,26 +162,12 @@ export default function HomeScreen() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Connected Devices</Text>
             <View style={styles.deviceCount}>
-              <Text style={styles.deviceCountText}>4</Text>
+              <Text style={styles.deviceCountText}>{devices.length}</Text>
             </View>
           </View>
 
           <View style={styles.devicesGrid}>
-            {
-              devices.map((device, index) => {
-                return (
-                  <DeviceCard 
-                    key={index}
-                    title={device.title} 
-                    subtitle={deviceState[device.row] ? `${device.title} Opened` : `${device.title} Closed`}
-                    icon={device.icon}
-                    row={device.row}
-                    active={deviceState[device.row] ?? false}
-                    // setActive={() => setDeviceState({...deviceState, [device.row]: !deviceState[device.row]})}
-                  />
-                )
-              })
-            }
+            {deviceCards}
           </View>
         </View>
       </ScrollView>
@@ -171,7 +176,7 @@ export default function HomeScreen() {
 }
 
 // Need to fetch data from ESP32 sensor
-function WeatherInfo({ icon, label, value }: any) {
+function WeatherInfo({ icon, label, value }: WeatherInfoProps) {
   return (
     <View style={styles.weatherInfo}>
       <View style={[styles.weatherIcon, { backgroundColor: "#ffffff" }]}>
@@ -183,55 +188,10 @@ function WeatherInfo({ icon, label, value }: any) {
   );
 }
 
-function DeviceCard({ title, subtitle, icon, active, row }: any) {
+function DeviceCard({ title, subtitle, icon, active }: DeviceCardProps) {
 
   async function onPressFunction() {
-    const { data, error } = await supabase
-      .from("classroom_devices")
-      .update({ "is_enabled": !active })
-      .eq("device_name", row);
-
-    if (error) {
-      console.log("Error: ", error.message);
-      return;
-    }
-
-    // setActive();
-    return true;
-  }
-
-  return (
-    <TouchableOpacity
-      style={[
-        styles.deviceCard,
-        active && styles.deviceCardActive,
-      ]}
-      activeOpacity={0.3}
-      onPress={onPressFunction}
-    >
-      <View style={[styles.deviceIcon, { backgroundColor: `white` }]}>
-        <MaterialCommunityIcons
-          name={icon}
-          size={25}
-          color={"000"}
-        />
-      </View>
-      <Text style={[
-        styles.deviceTitle,
-        // isPressed && styles.deviceTitlePressed
-      ]}>
-        {title}
-      </Text>
-      <Text style={styles.deviceSubtitle}>{subtitle}</Text>
-      {active && <View style={styles.activeIndicator} />}
-    </TouchableOpacity>
-  );
-}
-
-// Seems like we don't need this one
-function AlarmCard({ title, subtitle, icon, active, onPress }: any) {
-
-  async function onPressFunction() {
+    return await updateDevicesData(!active, title);
   }
 
   return (

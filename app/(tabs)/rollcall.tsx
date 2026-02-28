@@ -1,176 +1,165 @@
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, StatusBar } from "react-native";
-import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, StatusBar, Pressable, Platform } from "react-native";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import DateTimePicker from '@react-native-community/datetimepicker';
+import MonthPickerModal from "../(modals)/monthPickerModal";
+import { useDailyAttendance, useMonthlyAttendance } from "@/hooks/useAttendance";
+import { useRouter } from "expo-router";
+
+interface DailyStudentData {
+  student_id: string;
+  name: string;
+  attendance_logs: {
+    scanned_at: string;
+  }[];
+};
+
+interface MonthlyStudentData {
+  id: string;
+  name: string;
+  daysPresent: string[];
+}
+
+const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const months = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+];
+
+// shows the student's yearly data when user presses onto it
+function countWeekdaysInMonth(year: number, month: number) {
+  let totalWeekDays = 0;
+  let currentDate = new Date(year, month, 1);
+  const lastDate = new Date().getDate();
+  while (currentDate.getMonth() === month && currentDate.getDate() <= lastDate) {
+    let dayOfWeek = currentDate.getDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      totalWeekDays++;
+    }
+    
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+  return totalWeekDays;
+}
 
 export default function RollCallScreen() {
-  const [timeFrame, setTimeFrame] = useState("daily");
-  
-  // Sample roll call data
-  const dailyData = [
-    { id: "1", name: "John Doe", time: "08:30 AM", status: "present" },
-    { id: "2", name: "Jane Smith", time: "08:32 AM", status: "present" },
-    { id: "3", name: "Robert Johnson", time: "09:15 AM", status: "late" },
-    { id: "4", name: "Emily Davis", time: "-", status: "absent" },
-    { id: "5", name: "Michael Brown", time: "08:28 AM", status: "present" },
-    { id: "6", name: "Sarah Wilson", time: "08:31 AM", status: "present" },
-    { id: "7", name: "David Miller", time: "09:05 AM", status: "late" },
-    { id: "8", name: "Lisa Taylor", time: "08:29 AM", status: "present" },
-  ];
+  const router = useRouter();
 
-  // Add these data arrays at the top of your component
-  const studentsWeeklyData = [
-    { id: "S001", name: "John Doe", present: 4, late: 1, absent: 0 },
-    { id: "S002", name: "Jane Smith", present: 5, late: 0, absent: 0 },
-    { id: "S003", name: "Robert Johnson", present: 3, late: 0, absent: 2 },
-    { id: "S004", name: "Emily Davis", present: 2, late: 2, absent: 1 },
-    { id: "S005", name: "Michael Brown", present: 4, late: 1, absent: 0 },
-    { id: "S006", name: "Sarah Wilson", present: 5, late: 0, absent: 0 },
-    { id: "S007", name: "David Miller", present: 3, late: 1, absent: 1 },
-    { id: "S008", name: "Lisa Taylor", present: 4, late: 0, absent: 1 },
-  ];
+  const [timeFrame, setTimeFrame] = useState<'daily' | 'monthly'>('daily');
+  const [isCalendarVisible, setIsCalendarVisible] = useState<boolean>(false);
+  const [date, setDate] = useState(new Date());
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
 
-  const studentsYearlyData = [
-    { id: "S001", name: "John Doe", class: "12A", totalPresent: 180, totalAbsent: 20 },
-    { id: "S002", name: "Jane Smith", class: "12A", totalPresent: 195, totalAbsent: 5 },
-    { id: "S003", name: "Robert Johnson", class: "12A", totalPresent: 150, totalAbsent: 50 },
-    { id: "S004", name: "Emily Davis", class: "12A", totalPresent: 165, totalAbsent: 35 },
-    { id: "S005", name: "Michael Brown", class: "12A", totalPresent: 190, totalAbsent: 10 },
-    { id: "S006", name: "Sarah Wilson", class: "12A", totalPresent: 198, totalAbsent: 2 },
-    { id: "S007", name: "David Miller", class: "12A", totalPresent: 140, totalAbsent: 60 },
-    { id: "S008", name: "Lisa Taylor", class: "12A", totalPresent: 175, totalAbsent: 25 },
-];
+  const isDaily = timeFrame === 'daily';
+  const isMonthly = timeFrame === 'monthly';
+
+  const { data: dailyData, isLoading: isDailyLoading } = useDailyAttendance(date, isDaily);
+  const { data: monthlyData, isLoading: isMonthlyLoading } = useMonthlyAttendance(selectedMonth, isMonthly);
 
   const renderDailyView = () => (
     <View style={styles.tableContainer}>
       <View style={styles.tableHeader}>
-        <Text style={styles.columnHeader}>Name</Text>
+        <Text style={[styles.columnHeader, styles.nameHeader]}>Name</Text>
         <Text style={styles.columnHeader}>Time</Text>
         <Text style={styles.columnHeader}>Status</Text>
       </View>
-      {dailyData.map((item) => (
-        <View key={item.id} style={styles.tableRow}>
-          <Text style={styles.nameCell}>{item.name}</Text>
-          <Text style={styles.timeCell}>{item.time}</Text>
-          <View style={[
-            styles.statusBadge,
-            item.status === 'present' && styles.presentBadge,
-            item.status === 'late' && styles.lateBadge,
-            item.status === 'absent' && styles.absentBadge
-          ]}>
-            <Text style={styles.statusText}>
-              {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-            </Text>
-          </View>
-        </View>
-      ))}
-    </View>
-  );
+      {!isDailyLoading && dailyData && dailyData.map((item: DailyStudentData, index: number) => {
+        const status = item.attendance_logs[0] ? 'present' : 'absent';
 
-  const renderWeeklyView = () => (
-    <View style={styles.tableContainer}>
-      <View style={styles.tableHeader}>
-        <Text style={[styles.columnHeader, { flex: 2 }]}>Name</Text>
-        <Text style={styles.columnHeader}>Present</Text>
-        <Text style={styles.columnHeader}>Late</Text>
-        <Text style={styles.columnHeader}>Absent</Text>
-        <Text style={styles.columnHeader}>Weekly %</Text>
-      </View>
-      {studentsWeeklyData.map((student, index) => {
-        const totalDays = student.present + student.late + student.absent;
-        const weeklyPercentage = totalDays > 0 
-          ? Math.round((student.present / totalDays) * 100) 
-          : 0;
-        
         return (
           <TouchableOpacity 
-            key={student.id} 
+            key={index} 
             style={styles.tableRow}
             activeOpacity={0.7}
-            onPress={() => console.log('View student details:', student.id)}
+            onPress={() => {
+              router.push({
+                pathname: "/screens/studentDetail",
+                params: { studentName: item.name }
+              })
+            }}
           >
-            <View style={[styles.nameCell, { flex: 2 }]}>
-              <Text style={styles.studentName}>{student.name}</Text>
-              <Text style={styles.studentId}>{student.id}</Text>
-            </View>
-            <Text style={styles.presentCell}>{student.present}</Text>
-            <Text style={styles.lateCell}>{student.late}</Text>
-            <Text style={styles.absentCell}>{student.absent}</Text>
-            <View style={styles.percentageCell}>
-              <Text style={[
-                styles.percentageText, 
-                { color: weeklyPercentage >= 75 ? '#10B981' : weeklyPercentage >= 50 ? '#F59E0B' : '#EF4444' }
-              ]}>
-                {weeklyPercentage}%
+            <Text style={styles.nameCell}>{item.name}</Text>
+            <Text style={styles.timeCell}>
+              {
+                item.attendance_logs[0] && new Date(item.attendance_logs[0].scanned_at).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+               }
+            </Text>
+            <View style={[
+              styles.statusBadge,
+              status === 'present' && styles.presentBadge,
+              // status === 'late' && styles.lateBadge,
+              status === 'absent' && styles.absentBadge
+            ]}>
+              <Text style={styles.statusText}>
+                {status.charAt(0).toUpperCase() + status.slice(1)}
               </Text>
-              <View style={styles.progressBar}>
-                <View style={[
-                  styles.progressFill, 
-                  { 
-                    width: `${weeklyPercentage}%`,
-                    backgroundColor: weeklyPercentage >= 75 ? '#10B981' : weeklyPercentage >= 50 ? '#F59E0B' : '#EF4444'
-                  }
-                ]} />
-              </View>
             </View>
           </TouchableOpacity>
-        );
+        )
       })}
     </View>
   );
 
-  const renderYearlyView = () => (
+  const renderMonthlyView = () => (
     <View style={styles.tableContainer}>
       <View style={styles.tableHeader}>
         <Text style={[styles.columnHeader, { flex: 2 }]}>Name</Text>
         <Text style={styles.columnHeader}>Total Present</Text>
         <Text style={styles.columnHeader}>Total Absent</Text>
-        <Text style={styles.columnHeader}>Yearly %</Text>
-        <Text style={styles.columnHeader}>Status</Text>
+        <Text style={styles.columnHeader}>Monthly %</Text>
+        {/* <Text style={styles.columnHeader}>Status</Text> */}
       </View>
-      {studentsYearlyData.map((student, index) => {
-        const totalDays = student.totalPresent + student.totalAbsent;
-        const yearlyPercentage = totalDays > 0 
-          ? Math.round((student.totalPresent / totalDays) * 100) 
+      {!isMonthlyLoading && monthlyData && monthlyData.map((item: MonthlyStudentData) => {
+        const totalPresent = item.daysPresent.length;
+        const yearlyPercentage = totalWeekDays > 0 
+          ? Math.round((totalPresent / totalWeekDays) * 100) 
           : 0;
         
-        let status = '';
         let statusColor = '';
         
         if (yearlyPercentage >= 90) {
-          status = 'Excellent';
+          // status = 'Excellent';
           statusColor = '#10B981';
         } else if (yearlyPercentage >= 75) {
-          status = 'Good';
+          // status = 'Good';
           statusColor = '#3B82F6';
         } else if (yearlyPercentage >= 60) {
-          status = 'Average';
+          // status = 'Average';
           statusColor = '#F59E0B';
         } else {
-          status = 'Poor';
+          // status = 'Poor';
           statusColor = '#EF4444';
         }
         
         return (
           <TouchableOpacity 
-            key={student.id} 
+            key={item.id} 
             style={styles.tableRow}
             activeOpacity={0.7}
-            onPress={() => console.log('View student yearly details:', student.id)}
+            onPress={() => 
+              router.push({
+                pathname: '/screens/studentDetail',
+                params: { studentName: item.name }
+              })
+            }
           >
             <View style={[styles.nameCell, { flex: 2 }]}>
-              <View style={styles.avatarContainer}>
+              {/* <View style={styles.avatarContainer}>
                 <Text style={styles.avatarText}>
-                  {student.name.split(' ').map(n => n[0]).join('')}
+                  {item.name.split(' ').map(n => n[0]).join('')}
                 </Text>
-              </View>
+              </View> */}
               <View style={styles.nameInfo}>
-                <Text style={styles.studentName}>{student.name}</Text>
-                <Text style={styles.studentId}>{student.id} • {student.class}</Text>
+                <Text style={styles.studentName}>{item.name}</Text>
+                <Text style={styles.studentId}>{item.id}</Text>
               </View>
             </View>
-            <Text style={styles.presentCell}>{student.totalPresent}</Text>
-            <Text style={styles.absentCell}>{student.totalAbsent}</Text>
+            <Text style={styles.presentCell}>{totalPresent}</Text>
+            <Text style={styles.absentCell}>{totalWeekDays - totalPresent}</Text>
             <View style={styles.percentageCell}>
               <Text style={[
                 styles.percentageText, 
@@ -188,20 +177,57 @@ export default function RollCallScreen() {
                 ]} />
               </View>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: `${statusColor}15` }]}>
+            {/* <View style={[styles.statusBadge, { backgroundColor: `${statusColor}15` }]}>
               <Text style={[styles.statusText, { color: statusColor }]}>
                 {status}
               </Text>
-            </View>
+            </View> */}
           </TouchableOpacity>
         );
       })}
     </View>
   );
 
+  const memorizedDailyView = useMemo(() => renderDailyView(), [dailyData]);
+  const memorizedMonthlyView = useMemo(() => renderMonthlyView(), [monthlyData]);
+
+  const totalWeekDays = useMemo(() => countWeekdaysInMonth(new Date().getFullYear(), selectedMonth), [selectedMonth]);
+
+  const summary = useMemo(() => {
+    if (!dailyData && !monthlyData) return { present: 0, total: 0 };
+
+    if (isDaily && dailyData) {
+      const { present, total } = dailyData.reduce(
+        (acc, student) => {
+          acc.total++;
+          if (student.attendance_logs.length > 0) acc.present++;
+          return acc;
+        },
+        { present: 0, total: 0 }
+      );
+      return { present, total };
+    } else if (isMonthly && monthlyData) {
+      const totalDays = countWeekdaysInMonth(new Date().getFullYear(), selectedMonth);
+      const present = monthlyData.reduce((acc, student) => acc + student.daysPresent.length, 0);
+      return { present, total: totalDays * monthlyData.length };
+    }
+    return { present: 0, total: 0 };
+  }, [dailyData, monthlyData, isDaily, isMonthly, selectedMonth]);
+
+  const dateOnChange = (_: any, selectedDate?: Date) => {
+    const currentDate = selectedDate || date;
+    setIsCalendarVisible(Platform.OS === 'ios');
+    setDate(currentDate);
+  };
+
+  const monthOnChange = (month: number) => {
+    setSelectedMonth(month);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
+
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Updated Header */}
         <View style={styles.header}>
@@ -212,7 +238,9 @@ export default function RollCallScreen() {
 
           <View style={styles.headerIcons}>
             <Ionicons name="notifications-outline" size={22} color="#2D3748" />
-            <View style={styles.avatar} />
+            <Pressable onPress={() => setIsCalendarVisible(true)}>
+              <Ionicons name="calendar-number-outline" size={22} color="#2D3748" />
+            </Pressable>
           </View>
         </View>
 
@@ -229,20 +257,11 @@ export default function RollCallScreen() {
             </TouchableOpacity>
             
             <TouchableOpacity 
-              style={[styles.timeFrameButton, timeFrame === 'weekly' && styles.timeFrameActive]}
-              onPress={() => setTimeFrame('weekly')}
+              style={[styles.timeFrameButton, timeFrame === 'monthly' && styles.timeFrameActive]}
+              onPress={() => setTimeFrame('monthly')}
             >
-              <Text style={[styles.timeFrameText, timeFrame === 'weekly' && styles.timeFrameTextActive]}>
-                Weekly
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.timeFrameButton, timeFrame === 'yearly' && styles.timeFrameActive]}
-              onPress={() => setTimeFrame('yearly')}
-            >
-              <Text style={[styles.timeFrameText, timeFrame === 'yearly' && styles.timeFrameTextActive]}>
-                Yearly
+              <Text style={[styles.timeFrameText, timeFrame === 'monthly' && styles.timeFrameTextActive]}>
+                Monthly
               </Text>
             </TouchableOpacity>
           </View>
@@ -263,23 +282,23 @@ export default function RollCallScreen() {
               <View style={[styles.statIcon, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
                 <Feather name="check-circle" size={20} color="#10B981" />
               </View>
-              <Text style={styles.statValue}>75%</Text>
+              <Text style={styles.statValue}>{Math.floor((summary.present / summary.total) * 100)}%</Text>
               <Text style={styles.statLabel}>Present</Text>
             </View>
             
-            <View style={styles.statItem}>
+            {/* <View style={styles.statItem}>
               <View style={[styles.statIcon, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
                 <Feather name="clock" size={20} color="#F59E0B" />
               </View>
               <Text style={styles.statValue}>15%</Text>
               <Text style={styles.statLabel}>Late</Text>
-            </View>
+            </View> */}
             
             <View style={styles.statItem}>
               <View style={[styles.statIcon, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
                 <Feather name="x-circle" size={20} color="#EF4444" />
               </View>
-              <Text style={styles.statValue}>10%</Text>
+              <Text style={styles.statValue}>{Math.floor(((summary.total - summary.present) / summary.total) * 100)}%</Text>
               <Text style={styles.statLabel}>Absent</Text>
             </View>
           </View>
@@ -290,49 +309,37 @@ export default function RollCallScreen() {
           <View style={styles.sectionHeader}>
             {/* <Text style={styles.currentDate}></Text> */}
             <Text style={styles.sectionTitle}>
-              {timeFrame === 'daily' ? 'Fri, 24 March 2023' : 
-               timeFrame === 'weekly' ? 'Weekly Attendance' : 'Yearly Overview'}
+              {timeFrame === 'daily' ? `${days[date.getDay()]}, ${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}` : "Monthly attendance"}
             </Text>
             <View style={styles.totalCount}>
               <Text style={styles.totalCountText}>
-                {timeFrame === 'daily' ? '8 Students' : 
-                 timeFrame === 'weekly' ? '5 Days' : '5 Months'}
+                {timeFrame === 'daily' ? `${summary.total} students` : '5 Months'}
               </Text>
             </View>
           </View>
           
-          {timeFrame === 'daily' && renderDailyView()}
-          {timeFrame === 'weekly' && renderWeeklyView()}
-          {timeFrame === 'yearly' && renderYearlyView()}
+          {timeFrame === 'daily' && memorizedDailyView}
+          {timeFrame === 'monthly' && memorizedMonthlyView}
         </View>
-        
-        {/* Quick Actions */}
-        {/* <View style={styles.actionsSection}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-          <View style={styles.actionButtons}>
-            <TouchableOpacity style={styles.actionButton}>
-              <View style={[styles.actionIcon, { backgroundColor: '#4F46E5' }]}>
-                <Feather name="plus" size={20} color="white" />
-              </View>
-              <Text style={styles.actionText}>Add Student</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.actionButton}>
-              <View style={[styles.actionIcon, { backgroundColor: '#10B981' }]}>
-                <Feather name="edit" size={20} color="white" />
-              </View>
-              <Text style={styles.actionText}>Mark Attendance</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.actionButton}>
-              <View style={[styles.actionIcon, { backgroundColor: '#F59E0B' }]}>
-                <Feather name="file-text" size={20} color="white" />
-              </View>
-              <Text style={styles.actionText}>Generate Report</Text>
-            </TouchableOpacity>
-          </View>
-        </View> */}
       </ScrollView>
+
+      {isCalendarVisible && timeFrame == 'daily' &&
+        <DateTimePicker
+          value={date}
+          mode="date"
+          display='default'
+          onChange={dateOnChange}
+        />
+      }
+
+      {isCalendarVisible && timeFrame === 'monthly' && (
+        <MonthPickerModal 
+          isCalendarVisible={isCalendarVisible} 
+          setIsCalendarVisible={setIsCalendarVisible}
+          currentMonth={selectedMonth}
+          monthOnChange={monthOnChange}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -511,7 +518,7 @@ const styles = StyleSheet.create({
   },
   summaryStats: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
   },
   statItem: {
     alignItems: 'center',
@@ -590,6 +597,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  nameHeader: {
+    flex: 2,
+  },
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -599,7 +609,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F1F5F9',
   },
   nameCell: {
-    flex: 1,
+    flex: 2,
     fontSize: 14,
     fontWeight: '500',
     color: '#1E293B',
@@ -756,6 +766,7 @@ const styles = StyleSheet.create({
   nameInfo: {
     flex: 1,
   },
+
   // percentageCell: {
   //   flex: 1,
   //   flexDirection: 'column',
@@ -788,4 +799,107 @@ const styles = StyleSheet.create({
   //   fontSize: 12,
   //   fontWeight: '600',
   // },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '85%',
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333333',
+  },
+  monthContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    padding: 8,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  month: {
+    width: '30%',
+    marginVertical: 6,
+    marginHorizontal: '1.5%',
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  monthActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#0056b3',
+    shadowColor: '#007AFF',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  monthText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#495057',
+  },
+  monthTextActive: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  button: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 5,
+  },
+  cancelButton: {
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#dee2e6',
+  },
+  okButton: {
+    backgroundColor: '#007AFF',
+  },
+  cancelButtonText: {
+    color: '#495057',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  okButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });

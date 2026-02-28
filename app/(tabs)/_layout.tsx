@@ -95,7 +95,7 @@ export default function TabLayout() {
         }}
       />
 
-      <Tabs.Screen
+      {/* <Tabs.Screen
         name="usage"
         options={{
           tabBarIcon: ({ focused }) => (
@@ -106,7 +106,7 @@ export default function TabLayout() {
             />
           ),
         }}
-      />
+      /> */}
 
       <Tabs.Screen
         name="rollcall"

@@ -1,14 +1,21 @@
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Animated, Alert, Pressable } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Pressable } from "react-native";
 import { Ionicons, Feather, MaterialIcons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../utils/SupabaseClient";
-import AutomationModal from "../(modals)/automationModal";
 import NetInfo from "@react-native-community/netinfo";
 import Swipeable from 'react-native-gesture-handler/Swipeable';
+import { router, useRouter } from "expo-router";
+
+interface automationListType {
+  
+}
+
+// after creating new automation, have to update UI
 
 export default function AutomateScreen() {
-  const [modalVisible, setModalVisible] = useState(false);
+  const router = useRouter();
+
   const [automationList, setAutomationList] = useState<null | any[]>();
   const [activeAutomations, setActiveAutomations] = useState(0);
 
@@ -26,7 +33,7 @@ export default function AutomateScreen() {
     }
 
     let res = 0;
-    data.forEach(row => {
+    data!.forEach(row => {
       if (row.is_enabled) {
         res++;
       }
@@ -103,7 +110,9 @@ export default function AutomateScreen() {
         </View>
 
         {/* Add New Button */}
-        <TouchableOpacity style={styles.addButton} onPress={() => setModalVisible(!modalVisible)}>
+        <TouchableOpacity style={styles.addButton} onPress={() => {
+          router.push("/screens/addAutomation");
+        }}>
           <View style={styles.addButtonInner}>
             <View style={styles.addIcon}>
               <Ionicons name="add" size={24} color="#667EEA" />
@@ -117,14 +126,14 @@ export default function AutomateScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      <AutomationModal modalVisible={modalVisible} setModalVisible={setModalVisible} onCreateFunction={onCreateFunction} />
+      {/* <AutomationModal modalVisible={modalVisible} setModalVisible={setModalVisible} onCreateFunction={onCreateFunction} /> */}
     </SafeAreaView>
   );
 }
 
 function AutomationItem({ title, subtitle, icon, enabled, color, id, onDelete, setAutomationList }: any) {
-  const [isEnabled, setIsEnabled] = useState();
-  // console.log(id);
+  const [isEnabled, setIsEnabled] = useState<boolean>();
+  const swipeRef = useRef<Swipeable>(null);
 
   useEffect(() => {
     setIsEnabled(enabled);
@@ -145,10 +154,6 @@ function AutomationItem({ title, subtitle, icon, enabled, color, id, onDelete, s
     return;
   }
 
-  function handleLongPress() {
-    console.log("Long Press.");
-  }
-
   async function deleteFunction() {
     const { data, error } = await supabase
       .from("automations")
@@ -160,17 +165,36 @@ function AutomationItem({ title, subtitle, icon, enabled, color, id, onDelete, s
       return;
     }
 
-    setAutomationList(prev => prev.filter(row => row.id != id));
+    swipeRef.current?.close();
+    // need to add types
+    setAutomationList((prev: []) => prev.filter((row: { id: number }) => row.id != id));
   }
 
   function renderRightAction() {
     return (
       <Pressable 
         onPress={deleteFunction}
-        style={styles.deleteHint}
+        style={[styles.hint, styles.deleteHint]}
       >
         <Ionicons name="trash-outline" size={24} color="#DC2626" />
-        <Text style={styles.deleteHintText}>Delete</Text>
+        <Text style={[styles.hintText, styles.deleteHintText]}>Delete</Text>
+      </Pressable>
+    )
+  }
+
+  function renderLeftAction() {
+    return (
+      <Pressable
+        onPress={() => {
+          router.push({
+            pathname: "/screens/addAutomation",
+            params: {}
+          })
+        }}
+        style={[styles.hint, styles.editHint]}
+      >
+        <Feather name="edit" size={24} color="#000080"/>
+        <Text style={[styles.hintText, styles.editHintText]}>Edit</Text>
       </Pressable>
     )
   }
@@ -178,9 +202,10 @@ function AutomationItem({ title, subtitle, icon, enabled, color, id, onDelete, s
   return (
     <Swipeable
       renderRightActions={renderRightAction}
-      style={styles.automationContainer}
+      renderLeftActions={renderLeftAction}
       overshootLeft={false}
       overshootRight={false}
+      ref={swipeRef}
     >
       <TouchableOpacity
         style={styles.automationCard}
@@ -443,6 +468,9 @@ const styles = StyleSheet.create({
     color: '#2D3748',
     marginBottom: 4,
   },
+  automationSubtitle: {
+    fontSize: 12,
+  },
   switchContainer: {
     alignItems: 'center',
     gap: 6,
@@ -452,21 +480,32 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
   },
-  deleteHint: {
+  hint: {
     width: 80,
     height: 95,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 15,
-    backgroundColor: '#FEE2E2',
     borderRadius: 16,
     zIndex: -1,
   },
-  deleteHintText: {
-    color: '#DC2626',
+  deleteHint: {
+    marginLeft: 15,
+    backgroundColor: '#FEE2E2',
+  },
+  editHint: {
+    marginRight: 15,
+    backgroundColor: "#B0E0E6"
+  },
+  hintText: {
     fontSize: 12,
     fontWeight: '600',
     marginTop: 4,
+  },
+  deleteHintText: {
+    color: '#DC2626',
+  }, 
+  editHintText: {
+    color: "#000080"
   },
   quickActions: {
     paddingHorizontal: 20,
