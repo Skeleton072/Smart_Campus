@@ -14,11 +14,11 @@ serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1cmlnaHl6emdpZXp6eGhpd2ViIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODY1NzAyNSwiZXhwIjoyMDg0MjMzMDI1fQ.hxRjlqc-vX9b3ZP_ojaoxDT9C8BdDHqtO6gH7rInOEI"
     );
 
-    let device, value;
+    let device, value, threshold;
     if (payload.type === 'UPDATE') {
-      // if something went wrong, check this
       device = payload.record.device_name;
       value = payload.record.value;
+      threshold = payload.record.threshold; // if something went wrong, check this
     } else {
       ({ device, value } = payload);
     }
@@ -50,7 +50,7 @@ serve(async (req: Request) => {
 
     for (const automation of automations) {
       if (automation.trigger_type === "sensor") {
-        if (value < 200) {
+        if (value < threshold) { // if something went wrong, check this
           matching.push(automation);
         } else {
           matching.push({...automation, action: "OFF" });
@@ -80,7 +80,7 @@ serve(async (req: Request) => {
     const { error: updateAutomateError } = await supabase
       .from("automations")
       .update({ is_running })
-      .eq("id", automations.id);
+      .eq("id", finalDecision.id);
 
     if (updateAutomateError) throw updateAutomateError;
     

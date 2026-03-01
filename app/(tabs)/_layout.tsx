@@ -5,7 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { View, Text } from 'react-native';
 
 export default function TabLayout() {
-
   const LineTabBarIcon = ({ 
     focused, 
     iconName, 
@@ -82,7 +81,7 @@ export default function TabLayout() {
         }}
       />
 
-      <Tabs.Screen
+      {/* <Tabs.Screen
         name="automate"
         options={{
           tabBarIcon: ({ focused }) => (
@@ -93,7 +92,7 @@ export default function TabLayout() {
             />
           ),
         }}
-      />
+      /> */}
 
       {/* <Tabs.Screen
         name="usage"
