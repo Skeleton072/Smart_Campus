@@ -111,7 +111,6 @@ export default function AddAutomationScreen() {
     to.setMinutes(Number(endMinute));
   }
 
-
   const [state, dispatch] = useReducer(reducer, {
     automationTitle: title ? String(title) : "",
     selectedDevice: device ? String(device) : "",

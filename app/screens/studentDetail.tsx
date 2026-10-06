@@ -1,5 +1,5 @@
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, StatusBar } from "react-native";
-import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState, useMemo } from "react";
@@ -25,19 +25,20 @@ export default function StudentDetailsScreen() {
   const { studentName } = useLocalSearchParams();
   const [activeTab, setActiveTab] = useState<'attendance' | 'academics'>('attendance');
 
-  // Mock data - replace with actual API calls
+  // fetch actual data from database
   const studentInfo = {
     name: studentName,
     id: "STU001",
-    class: "10th Grade",
-    section: "A",
+    // class: "10th Grade",
+    section: "B",
     rollNumber: "24",
     admissionDate: "2024-01-15",
-    parentContact: "+1 234 567 890",
+    contact: "+1 234 567 890",
     email: "john.doe@school.com",
     address: "123 Main St, City, State 12345"
   };
 
+  // fetch actual data from database
   const attendanceData: AttendanceRecord[] = [
     { month: "January 2026", present: 22, total: 24, percentage: 92 },
     { month: "February 2026", present: 20, total: 22, percentage: 91 },
@@ -47,6 +48,7 @@ export default function StudentDetailsScreen() {
     { month: "June 2026", present: 15, total: 18, percentage: 83 },
   ];
 
+  // fetch actual data from database
   const subjectMarks: SubjectMarks[] = [
     { subject: "Mathematics", marks: 85, totalMarks: 100, grade: "A", status: "passed" },
     { subject: "Science", marks: 78, totalMarks: 100, grade: "B+", status: "passed" },
@@ -100,13 +102,13 @@ export default function StudentDetailsScreen() {
           <Text style={styles.summaryLabel}>Days Present</Text>
         </View>
 
-        <View style={styles.summaryCard}>
+        {/* <View style={styles.summaryCard}>
           <View style={[styles.summaryIcon, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
             <Feather name="clock" size={20} color="#F59E0B" />
           </View>
           <Text style={styles.summaryValue}>8</Text>
           <Text style={styles.summaryLabel}>Days Late</Text>
-        </View>
+        </View> */}
 
         <View style={styles.summaryCard}>
           <View style={[styles.summaryIcon, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
@@ -305,10 +307,10 @@ export default function StudentDetailsScreen() {
               <View style={styles.profileInfo}>
                 <Text style={styles.profileName}>{studentInfo.name}</Text>
                 <View style={styles.badgeContainer}>
-                  <View style={styles.badge}>
+                  {/* <View style={styles.badge}>
                     <Feather name="book-open" size={12} color="#4F46E5" />
                     <Text style={styles.badgeText}>Class {studentInfo.class}</Text>
-                  </View>
+                  </View> */}
                   <View style={styles.badge}>
                     <Feather name="users" size={12} color="#4F46E5" />
                     <Text style={styles.badgeText}>Sec {studentInfo.section}</Text>
@@ -328,7 +330,7 @@ export default function StudentDetailsScreen() {
               </View>
               <View style={styles.contactItem}>
                 <Feather name="phone" size={16} color="#64748B" />
-                <Text style={styles.contactText}>{studentInfo.parentContact}</Text>
+                <Text style={styles.contactText}>{studentInfo.contact}</Text>
               </View>
               <View style={styles.contactItem}>
                 <Feather name="map-pin" size={16} color="#64748B" />

@@ -24,6 +24,7 @@ interface DeviceProps {
 }
 
 // need to do weather api or fetch data from ESP32 for the weather card
+// YOU CAN'T MAKE THE ALRAM GO ON
 
 const devices = [
   {
@@ -146,7 +147,7 @@ export default function HomeScreen() {
 
         {/* Need changes */}
         <View style={styles.weatherCard}>
-          <Text style={styles.weatherDate}>Tuesday, 29 January 2026</Text>
+          <Text style={styles.weatherDate}>Tuesday, 11 March 2026</Text>
 
           <View style={styles.weatherMain}>
             <View>
